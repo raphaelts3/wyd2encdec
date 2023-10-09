@@ -1,0 +1,17 @@
+{
+  "name": "wyd2encdec",
+  "version": "0.0.1",
+  "description": "WYD2ENCDEC's JS implementation",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -41,7 +41,7 @@ it also has link to the language specific documentation.
 - [x] [C#](/csharp)
 - [x] [Java](/java)
 - [x] [Go](/go)
-- [ ] [JS](/js)
+- [x] [JS](/js)
 - [x] [PHP](/php)
 - [x] [Rust](/rust)
 
