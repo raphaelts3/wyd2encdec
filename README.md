@@ -47,7 +47,7 @@ it also has link to the language specific documentation.
 - [x] [Dart](/dart)
 
 ### Executing
-All implementations should be executed providing three arguments:
+All implementations should be executed providing four arguments:
  1. The _**path**_ for the _**keys** file
  2. **enc|dec**
  3. The _**path**_ for the _**encrypted bin**_ file
