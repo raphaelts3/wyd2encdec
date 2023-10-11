@@ -12,6 +12,7 @@ scapy = "^2.5.0"
 click = "^8.1.7"
 asyncclick = "^8.1.3.4"
 anyio = "^4.0.0"
+arrow = "^1.3.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
@@ -22,6 +23,7 @@ mypy = "*"
 
 [tool.poetry.scripts]
 encdec = "wyd2encdec.__main__:main"
+pcap = "wyd2encdec.__main__:pcap"
 
 [tool.taskipy.tasks]
 lint = "ruff check wyd2encdec"

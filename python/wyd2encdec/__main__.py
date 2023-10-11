@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import asyncclick as click
@@ -17,9 +18,11 @@ def wyd2_run() -> None:
 def pcap(keys_path: str, pcap_path: str) -> None:
     logging.basicConfig(level="INFO", format="%(message)s", datefmt="[%X]")
     instance = EncDec(keys_path)
-    data = instance.decrypt_pcap(pcap_path)
-    with open("./encoded.bin", "wb") as f:
+    dump, data = instance.decrypt_pcap(pcap_path)
+    with open("./decoded.bin", "wb") as f:
         f.write(data)
+    with open("./decoded.txt", "w") as f:
+        f.write("\n\n".join(dump))
 
 
 @sync_click.command()
@@ -43,4 +46,5 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    # main()
+    asyncio.run(pcap())

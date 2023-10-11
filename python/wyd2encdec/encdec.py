@@ -1,5 +1,11 @@
 import struct
 
+import arrow
+from scapy.all import hexdump, rdpcap
+from scapy.layers.inet import TCP
+from scapy.layers.l2 import Ether
+from scapy.packet import Raw
+
 
 class EncDec:
     _keys: bytes
@@ -61,6 +67,43 @@ class EncDec:
         raw = list(self._load_file(path))
         return self._enc_dec(raw, self._op_sub, self._op_add)
 
-    def decrypt_pcap(self, path: str) -> bytes:
-        raw = self._load_file(path)
-        return bytes(raw)
+    @staticmethod
+    def dump_pkt(pkt: Ether, data: bytes) -> str:
+        return "[%d/%04X] 0x%04X %s (%s) : %s > %s\n" % (
+            len(data),
+            len(data),
+            struct.unpack("<H", data[4:6])[0],
+            arrow.get(pkt.time, tzinfo="UTC-3").format("YYYY-MM-DD HH:mm:ss"),
+            arrow.get(pkt.time).humanize(),
+            pkt.payload.src,
+            pkt.payload.dst,
+        )
+
+    def decrypt_pcap(self, path: str) -> tuple[list[str], bytes]:
+        pkts = rdpcap(path)
+        raw = []
+        dumps = []
+        pkt: Ether
+        for pkt in pkts:
+            if pkt.payload.payload.name != "TCP":
+                continue
+            payload: TCP = pkt.payload.payload
+            if (
+                payload.dport != 8281 and payload.sport != 8281
+            ) or payload.payload.name != "Raw":
+                continue
+            raw_payload: Raw = payload.payload
+            if len(raw_payload.load) >= 12:
+                raw += list(raw_payload.load)
+                dumps.append(pkt)
+        decoded = self._enc_dec(raw, self._op_sub, self._op_add)
+        pos = 0
+        i = 0
+        while pos < len(raw) and i < len(dumps):
+            size = struct.unpack("<H", bytes(decoded[pos : pos + 2]))[0]
+            data = decoded[pos : pos + size]
+            dumps[i] = EncDec.dump_pkt(dumps[i], data) + hexdump(data, True)
+            i += 1
+            pos += size
+        dumps = dumps[:i]
+        return (dumps, decoded)
