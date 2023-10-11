@@ -45,6 +45,7 @@ it also has link to the language specific documentation.
 - [x] [PHP](/php)
 - [x] [Rust](/rust)
 - [x] [Dart](/dart)
+- [x] [Python](/python)
 
 ### Executing
 All implementations should be executed providing four arguments:
