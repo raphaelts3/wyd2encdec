@@ -32,6 +32,13 @@ class EncDec:
         pos = 0
         while pos < len(raw):
             size = struct.unpack("<H", bytes(raw[pos : pos + 2]))[0]
+            if size == 0xF311:
+                # Hello
+                pos += 4
+                continue
+            if size + pos > len(raw):
+                print("Bad packet size at: ", pos)
+                break
             key = self._keys[raw[pos + 2] << 1] & 255
             checksum_pre = 0
             checksum_pos = 0
@@ -69,9 +76,12 @@ class EncDec:
 
     @staticmethod
     def dump_pkt(pkt: Ether, data: bytes) -> str:
+        size = len(data)
+        if len(data) < 6:
+            data += b"\x00" * (6 - len(data))
         return "[%d/%04X] 0x%04X %s (%s) : %s > %s\n" % (
-            len(data),
-            len(data),
+            size,
+            size,
             struct.unpack("<H", data[4:6])[0],
             arrow.get(pkt.time, tzinfo="UTC-3").format("YYYY-MM-DD HH:mm:ss"),
             arrow.get(pkt.time).humanize(),
@@ -84,7 +94,8 @@ class EncDec:
         raw = []
         dumps = []
         pkt: Ether
-        for pkt in pkts:
+        prev_window = None
+        for i, pkt in enumerate(pkts):
             if pkt.payload.payload.name != "TCP":
                 continue
             payload: TCP = pkt.payload.payload
@@ -94,16 +105,21 @@ class EncDec:
                 continue
             raw_payload: Raw = payload.payload
             if len(raw_payload.load) >= 12:
-                raw += list(raw_payload.load)
-                dumps.append(pkt)
-        decoded = self._enc_dec(raw, self._op_sub, self._op_add)
-        pos = 0
-        i = 0
-        while pos < len(raw) and i < len(dumps):
-            size = struct.unpack("<H", bytes(decoded[pos : pos + 2]))[0]
-            data = decoded[pos : pos + size]
-            dumps[i] = EncDec.dump_pkt(dumps[i], data) + hexdump(data, True)
-            i += 1
-            pos += size
-        dumps = dumps[:i]
+                if prev_window is None or prev_window != payload.window:
+                    prev_window = payload.window
+                    raw.append({"pkt": pkt, "data": list(raw_payload.load)})
+                else:
+                    raw[-1]["data"] += list(raw_payload.load)
+        for _pkt in raw:
+            pkt = _pkt["pkt"]
+            data = _pkt["data"]
+            decoded = self._enc_dec(data, self._op_sub, self._op_add)
+            pos = 0
+            while pos < len(data):
+                size = struct.unpack("<H", bytes(decoded[pos : pos + 2]))[0]
+                if size == 0xF311:
+                    size = 4
+                _decoded = decoded[pos : pos + size]
+                dumps.append(EncDec.dump_pkt(pkt, _decoded) + hexdump(_decoded, True))
+                pos += size
         return (dumps, decoded)
