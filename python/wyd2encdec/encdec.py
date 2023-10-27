@@ -99,9 +99,10 @@ class EncDec:
             if pkt.payload.payload.name != "TCP":
                 continue
             payload: TCP = pkt.payload.payload
-            if (
-                payload.dport != 8281 and payload.sport != 8281
-            ) or payload.payload.name != "Raw":
+            # if (
+            #     payload.dport != 8281 and payload.sport != 8281
+            # ) or payload.payload.name != "Raw":
+            if payload.payload.name != "Raw":
                 continue
             raw_payload: Raw = payload.payload
             if len(raw_payload.load) >= 12:
@@ -110,16 +111,18 @@ class EncDec:
                     raw.append({"pkt": pkt, "data": list(raw_payload.load)})
                 else:
                     raw[-1]["data"] += list(raw_payload.load)
+        decoded = bytes()
         for _pkt in raw:
             pkt = _pkt["pkt"]
             data = _pkt["data"]
-            decoded = self._enc_dec(data, self._op_sub, self._op_add)
+            _decoded = self._enc_dec(data, self._op_sub, self._op_add)
+            decoded += _decoded
             pos = 0
             while pos < len(data):
-                size = struct.unpack("<H", bytes(decoded[pos : pos + 2]))[0]
+                size = struct.unpack("<H", bytes(_decoded[pos : pos + 2]))[0]
                 if size == 0xF311:
                     size = 4
-                _decoded = decoded[pos : pos + size]
-                dumps.append(EncDec.dump_pkt(pkt, _decoded) + hexdump(_decoded, True))
+                __decoded = _decoded[pos : pos + size]
+                dumps.append(EncDec.dump_pkt(pkt, __decoded) + hexdump(__decoded, True))
                 pos += size
         return (dumps, decoded)
