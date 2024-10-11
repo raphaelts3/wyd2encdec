@@ -1,129 +1,101 @@
 #!/usr/bin/env ruby
-
-require 'packetfu'
-
-class EncDec
-  def initialize(keys_path)
-    @keys = load_file(keys_path)
+def read_keys(path)
+  begin
+    keys = File.open(path, "rb:ASCII-8BIT", &:read)
+  rescue => error
+    puts "Failed to open keys file", error
+    return false, ""
   end
+  return true, keys
+end
 
-  def load_file(path)
-    File.open(path, 'rb') { |f| f.read }
+def read_data_file(path)
+  begin
+    buffer = File.open(path, "rb:ASCII-8BIT", &:read)
+  rescue => error
+    puts "Failed to open data file", error
+    return false, "", 0
   end
+  return true, buffer, buffer.size
+end
 
-  def op_add(a, b)
-    (a + b) & 255
-  end
-
-  def op_sub(a, b)
-    (a - b) & 255
-  end
-
-  def enc_dec(raw, op_even, op_odd)
-    pos = 0
-    while pos < raw.length
-      size = raw[pos, 2].unpack('v').first
-      key = @keys[raw[pos + 2] << 1] & 255
-      checksum_pre = 0
-      checksum_pos = 0
-
-      (4...size).each do |i|
-        mapped_key = @keys[((key % 256) << 1) + 1]
-        checksum_pre = (checksum_pre + raw[pos + i]) & 255
-
-        case i & 3
-        when 0
-          raw[pos + i] = op_even.call(raw[pos + i], (mapped_key << 1) & 255)
-        when 1
-          raw[pos + i] = op_odd.call(raw[pos + i], (mapped_key >> 3) & 255)
-        when 2
-          raw[pos + i] = op_even.call(raw[pos + i], (mapped_key << 2) & 255)
-        when 3
-          raw[pos + i] = op_odd.call(raw[pos + i], (mapped_key >> 5) & 255)
-        end
-
-        checksum_pos = (checksum_pos + raw[pos + i]) & 255
-        key += 1
+def encrypt(decrypted_file_raw, length, keys)
+  off = 0
+  while off < length do
+    packet_length = decrypted_file_raw[off, 2].unpack("S").first
+    key = decrypted_file_raw[off + 2].unpack("C").first
+    key = keys[(key << 1) % 512].unpack("C").first
+    (off + 4...off + packet_length).each do |i|
+      mapped_key = keys[((key % 256) << 1) % 512 + 1].unpack("C").first
+      curr_value = decrypted_file_raw[i].unpack("C").first
+      case i & 3
+      when 0
+        curr_value = (curr_value + (mapped_key << 1)) & 255
+      when 1
+        curr_value = (curr_value - (mapped_key >> 3)) & 255
+      when 2
+        curr_value = (curr_value + (mapped_key << 2)) & 255
+      when 3
+        curr_value = (curr_value - (mapped_key >> 5)) & 255
       end
-
-      pos += size
+      decrypted_file_raw[i] = [curr_value].pack("C")
+      key += 1
     end
-
-    raw.pack('C*')
-  end
-
-  def encrypt(path)
-    raw = load_file(path).bytes
-    enc_dec(raw, method(:op_add), method(:op_sub))
-  end
-
-  def decrypt(path)
-    raw = load_file(path).bytes
-    enc_dec(raw, method(:op_sub), method(:op_add))
-  end
-
-  def self.dump_pkt(pkt, data)
-    len = data.length
-    "[%d/%04X] 0x%04X %s (%s) : %s > %s\n" % [
-      len,
-      len,
-      data[4, 2].unpack('v').first,
-      Time.now.strftime("%Y-%m-%d %H:%M:%S"),
-      Time.now.humanize,
-      pkt.ip_saddr,
-      pkt.ip_daddr
-    ]
-  end
-
-  def decrypt_pcap(path)
-    pkts = PacketFu::PcapFile.read(path)
-    raw = []
-    dumps = []
-
-    pkts.each do |pkt|
-      next unless pkt.proto.include?(:tcp)
-
-      payload = pkt.payload
-      next unless payload.payload_sport == 8281 || payload.payload_dport == 8281
-      next unless payload.payload.include?(:raw)
-
-      raw_payload = payload.payload[:raw]
-
-      if raw_payload.length >= 12
-        raw.concat(raw_payload.bytes)
-        dumps << pkt
-      end
-    end
-
-    decoded = enc_dec(raw, method(:op_sub), method(:op_add))
-    pos = 0
-    i = 0
-
-    while pos < raw.length && i < dumps.length
-      size = decoded[pos, 2].unpack('v').first
-      data = decoded[pos, size]
-      dumps[i] = EncDec.dump_pkt(dumps[i], data) + PacketFu::Utils.hexify(data)
-      i += 1
-      pos += size
-    end
-
-    dumps = dumps[0...i]
-    [dumps, decoded]
+    off += packet_length
   end
 end
 
-
-options = {}
-
-OptionParser.new do |parser|
-
-  parser.on('-n', '--name NAME', 'Name of the person to greet.') do |n|
-    options[:name] = n
+def decrypt(encrypted_file_raw, length, keys)
+  off = 0
+  while off < length do
+    packet_length = encrypted_file_raw[off, 2].unpack("S").first
+    key = encrypted_file_raw[off + 2].unpack("C").first
+    key = keys[key << 1].unpack("C").first
+    (off + 4...off + packet_length).each do |i|
+      mapped_key = keys[((key % 256) << 1) % 512 + 1].unpack("C").first
+      curr_value = encrypted_file_raw[i].unpack("C").first
+      case i & 3
+      when 0
+        curr_value = (curr_value - (mapped_key << 1)) & 255
+      when 1
+        curr_value = (curr_value + (mapped_key >> 3)) & 255
+      when 2
+        curr_value = (curr_value - (mapped_key << 2)) & 255
+      when 3
+        curr_value = (curr_value + (mapped_key >> 5)) & 255
+      end
+      encrypted_file_raw[i] = [curr_value].pack("C")
+      key += 1
+    end
+    off += packet_length
   end
+end
 
-  parser.on('-h', '--house HOUSE', 'House of the person.') do |h|
-    options[:house] = h
-  end
-end.parse!
+if ARGV.length < 4
+  exit(-1)
+end
 
-puts "Hello, #{ options[:name] } of house #{ options[:house] }!"
+success, keys = read_keys(ARGV[0])
+exit(-2) unless success
+
+success, encrypted_file_raw, encrypted_file_raw_size = read_data_file(ARGV[2])
+exit(-3) unless success
+
+success, decrypted_file_raw, decrypted_file_raw_size = read_data_file(ARGV[3])
+exit(-4) unless success
+
+op = ARGV[1]
+if op == "enc"
+  encrypt(decrypted_file_raw, decrypted_file_raw_size, keys)
+  File.open("./encoded.bin", "wb") { |file| file.write(decrypted_file_raw) }
+elsif op == "dec"
+  decrypt(encrypted_file_raw, encrypted_file_raw_size, keys)
+  File.open("./decoded.bin", "wb") { |file| file.write(encrypted_file_raw) }
+end
+
+diff = 0
+(0...encrypted_file_raw_size).each do |i|
+  diff += 1 if encrypted_file_raw[i] != decrypted_file_raw[i]
+end
+
+puts "#{diff} differences"
