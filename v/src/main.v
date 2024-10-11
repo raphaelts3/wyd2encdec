@@ -1,135 +1,95 @@
 import os
 
-struct MsgHeader {
-    size_      u16   // Packet size
-    key_       u8    // Key used as seed for enc/dec
-    hash_      u8    // Hash generated to validate the process
-    code_      i16   // Internal packet identifier
-    index_     i16   // Index from the user that sent the packet
-    timestamp_ u32   // Timestamp usually get right before starting the enc/dec process
+fn read_keys(path string) ?[]u8 {
+	data := os.read_file(path) or {
+		eprintln('Failed to open keys file')
+		return none
+	}
+	return data.bytes()
 }
 
-fn encrypt(keys []u8, mut decrypted_packets []&MsgHeader, decrypted_file_raw []u8) {
-    for packet in decrypted_packets {
-        mut ptr := unsafe { &u8(packet) }
-        mut j := u16(4)
-        mut key := keys[packet.key_ << 1]
-        for j < packet.size_ {
-            mapped_key := keys[((key % 256) << 1) + 1]
-            unsafe {
-                match j & 3 {
-                    0 { ptr[j] += u8(mapped_key << 1) }
-                    1 { ptr[j] -= u8(mapped_key >> 3) }
-                    2 { ptr[j] += u8(mapped_key << 2) }
-                    3 { ptr[j] -= u8(mapped_key >> 5) }
-                    else {}
-                }
-            }
-            j++
-            key++
-        }
-    }
+fn read_data_file(path string) ?([]u8, int) {
+	data := os.read_file(path) or {
+		eprintln('Failed to open data file')
+		return none
+	}
+	return data.bytes(), data.len
 }
 
-fn decrypt(keys []u8, mut encrypted_packets []&MsgHeader, encrypted_file_raw []u8) {
-    for packet in encrypted_packets {
-        mut ptr := unsafe { &u8(packet) }
-        mut j := u16(4)
-        mut key := keys[packet.key_ << 1]
-        for j < packet.size_ {
-            mapped_key := keys[((key % 256) << 1) + 1]
-            unsafe {
-                match j & 3 {
-                    0 { ptr[j] -= u8(mapped_key << 1) }
-                    1 { ptr[j] += u8(mapped_key >> 3) }
-                    2 { ptr[j] -= u8(mapped_key << 2) }
-                    3 { ptr[j] += u8(mapped_key >> 5) }
-                    else {}
-                }
-            }
-            j++
-            key++
-        }
-    }
+fn encrypt(mut decrypted_file_raw []u8, length int, keys []u8) {
+	mut off := 0
+	for off < length {
+		packet_length := (int(decrypted_file_raw[off + 1]) << 8) + int(decrypted_file_raw[off])
+		mut key := int(decrypted_file_raw[off + 2])
+		key = keys[(key << 1) % 512]
+		for i := off + 4; i < off + packet_length; i++ {
+			mapped_key := keys[((key % 256) << 1) % 512 + 1]
+			mut curr_value := decrypted_file_raw[i]
+			match i & 3 {
+				0 { curr_value = u8((curr_value + (mapped_key << 1)) & 255) }
+				1 { curr_value = u8((curr_value - (mapped_key >> 3)) & 255) }
+				2 { curr_value = u8((curr_value + (mapped_key << 2)) & 255) }
+				3 { curr_value = u8((curr_value - (mapped_key >> 5)) & 255) }
+				else {}
+			}
+			decrypted_file_raw[i] = u8(curr_value)
+			key++
+		}
+		off += packet_length
+	}
 }
 
-fn read_keys(file_path string) ?[]u8 {
-    file := os.read_file(file_path) or {
-        eprintln('Failed to open the keys file')
-        return none
-    }
-    return file.bytes()
-}
-
-fn read_data_file(file_path string, mut packets []&MsgHeader) ?([]u8, int) {
-    println('Reading data file ${file_path}')
-    data := os.read_file(file_path) or {
-        eprintln('Failed to open the data file')
-        return none
-    }
-    file_size := data.len
-    mut ptr := &u8(data.bytes().data)
-    mut tmp_size := file_size
-    mut result := []u8{len: file_size}
-    for tmp_size > 0 {
-        packet := unsafe { &MsgHeader(ptr) }
-        packets << packet
-        unsafe { ptr += packet.size_ }
-        tmp_size -= packet.size_
-    }
-    return result, file_size
-}
-
-fn process_files(keys_file string, enc_file string, dec_file string, op string) {
-    keys := read_keys(keys_file)
-    if keys == none {
-        return
-    }
-
-    mut encrypted_packets := []&MsgHeader{}
-    mut decrypted_packets := []&MsgHeader{}
-
-    mut size_encrypted_file := 0
-    mut encrypted_file_raw := []u8{}
-    mut decrypted_file_raw := []u8{}
-    if op == "dec" {
-        encrypted_file_raw, size_encrypted_file = read_data_file(enc_file, mut encrypted_packets) or { return }
-    } else if op == "enc" {
-        decrypted_file_raw, _ = read_data_file(dec_file, mut decrypted_packets) or { return }
-    }
-
-    if op == 'enc' {
-        encrypt(keys, mut decrypted_packets, decrypted_file_raw)
-        os.write_file('./encoded.bin', decrypted_file_raw.bytestr()) or {
-            eprintln('Failed to write encoded file')
-        }
-    } else if op == 'dec' {
-        decrypt(keys, mut encrypted_packets, encrypted_file_raw)
-        os.write_file('./decoded.bin', encrypted_file_raw.bytestr()) or {
-            eprintln('Failed to write decoded file')
-        }
-    }
-
-    mut diff := 0
-    for i in 0 .. size_encrypted_file {
-        if encrypted_file_raw[i] != decrypted_file_raw[i] {
-            diff++
-        }
-    }
-
-    println('${diff} differences')
+fn decrypt(mut encrypted_file_raw []u8, length int, keys []u8) {
+	mut off := 0
+	for off < length {
+		packet_length := (int(encrypted_file_raw[off + 1]) << 8) + int(encrypted_file_raw[off])
+		mut key := int(encrypted_file_raw[off + 2])
+		key = keys[key << 1]
+		for i := off + 4; i < off + packet_length; i++ {
+			mapped_key := keys[((key % 256) << 1) % 512 + 1]
+			mut curr_value := encrypted_file_raw[i]
+			match i & 3 {
+				0 { curr_value = (curr_value - (mapped_key << 1)) & 255 }
+				1 { curr_value = (curr_value + (mapped_key >> 3)) & 255 }
+				2 { curr_value = (curr_value - (mapped_key << 2)) & 255 }
+				3 { curr_value = (curr_value + (mapped_key >> 5)) & 255 }
+				else {}
+			}
+			encrypted_file_raw[i] = curr_value
+			key++
+		}
+		off += packet_length
+	}
 }
 
 fn main() {
-    if os.args.len < 5 {
-        println('Not enough arguments')
-        return
-    }
+	if os.args.len < 5 {
+		exit(1)
+	}
+	keys := read_keys(os.args[1]) or { exit(2) }
 
-    keys_file := os.args[1]
-    op := os.args[2]
-    enc_file := os.args[3]
-    dec_file := os.args[4]
+	mut encrypted_file_raw := []u8{}
+    mut encrypted_file_raw_size := 0
+	encrypted_file_raw, encrypted_file_raw_size = read_data_file(os.args[3]) or { exit(3) }
 
-    process_files(keys_file, enc_file, dec_file, op)
+	mut decrypted_file_raw := []u8{}
+    mut decrypted_file_raw_size := 0
+	decrypted_file_raw, decrypted_file_raw_size = read_data_file(os.args[4]) or { exit(4) }
+
+	op := os.args[2]
+	if op == 'enc' {
+		encrypt(mut decrypted_file_raw, decrypted_file_raw_size, keys)
+		os.write_file_array('./encoded.bin', decrypted_file_raw) or { exit(5) }
+	} else if op == 'dec' {
+		decrypt(mut encrypted_file_raw, encrypted_file_raw_size, keys)
+		os.write_file_array('./decoded.bin', encrypted_file_raw) or { exit(6) }
+	}
+
+	mut diff := 0
+	for i in 0 .. encrypted_file_raw_size {
+		if encrypted_file_raw[i] != decrypted_file_raw[i] {
+			diff++
+		}
+	}
+	println('$diff differences')
 }
