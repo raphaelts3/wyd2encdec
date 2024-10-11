@@ -1,0 +1,17 @@
+GEM
+  remote: https://rubygems.org/
+  specs:
+    optparse (0.5.0)
+    packetfu (1.1.13)
+      pcaprub
+    pcaprub (0.13.3)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  optparse
+  packetfu
+
+BUNDLED WITH
+   1.17.2
