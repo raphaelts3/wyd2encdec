@@ -46,6 +46,7 @@ it also has link to the language specific documentation.
 - [x] [Rust](/rust)
 - [x] [Dart](/dart)
 - [x] [Python](/python)
+- [x] [Ruby](/ruby)
 
 ### Executing
 All implementations should be executed providing four arguments:
