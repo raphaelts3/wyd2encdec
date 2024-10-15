@@ -47,6 +47,8 @@ it also has link to the language specific documentation.
 - [x] [Dart](/dart)
 - [x] [Python](/python)
 - [x] [Ruby](/ruby)
+- [x] [V](/v)
+- [x] [Lua](/lua)
 
 ### Executing
 All implementations should be executed providing four arguments:
