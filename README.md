@@ -49,6 +49,7 @@ it also has link to the language specific documentation.
 - [x] [Ruby](/ruby)
 - [x] [V](/v)
 - [x] [Lua](/lua)
+- [x] [Swift](/swift)
 
 ### Executing
 All implementations should be executed providing four arguments:
