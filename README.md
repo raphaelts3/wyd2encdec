@@ -50,6 +50,7 @@ it also has link to the language specific documentation.
 - [x] [V](/v)
 - [x] [Lua](/lua)
 - [x] [Swift](/swift)
+- [x] [Pascal](/pascal)
 
 ### Executing
 All implementations should be executed providing four arguments:
